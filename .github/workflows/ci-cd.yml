@@ -49,8 +49,8 @@ jobs:
           # Remove any existing gitops directory
           rm -rf gitops
           
-          # Clone repository
-          git clone https://${GIT_TOKEN}@github.com/ouaatyaa/grade-api-gitops.git gitops
+          # Clone repository with token in URL
+          git clone https://$GIT_TOKEN@github.com/ouaatyaa/grade-api-gitops.git gitops
           cd gitops
           
           # Update deployment image
@@ -60,9 +60,11 @@ jobs:
           if git diff --quiet; then
             echo "No changes to commit - image tag already up to date"
           else
-            # Commit and push changes
+            # Commit changes
             git add deployment.yaml
             git commit -m "Update image to ${{ github.sha }}"
-            git push
+            
+            # Push with token in URL (avoids password prompt)
+            git push https://$GIT_TOKEN@github.com/ouaatyaa/grade-api-gitops.git main
             echo "Successfully updated GitOps repository"
           fi
