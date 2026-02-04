@@ -1,23 +1,33 @@
 name: CI/CD Pipeline
+
 on:
   push:
     branches: [ main ]
   pull_request:
     branches: [ main ]
+
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
+    
+    permissions:
+      contents: read
+      packages: write  # Required for pushing to ghcr.io
+    
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
+      
       - name: Login to GitHub Container Registry
         uses: docker/login-action@v2
         with:
           registry: ghcr.io
-          username: ${{ github.repository_owner }}
-          password: ${{ secrets.CR_PAT }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}  # Use built-in GITHUB_TOKEN instead
+      
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v2
+      
       - name: Build and push Docker image
         uses: docker/build-push-action@v4
         with:
@@ -26,33 +36,27 @@ jobs:
           tags: |
             ghcr.io/${{ github.repository }}:latest
             ghcr.io/${{ github.repository }}:${{ github.sha }}
+      
       - name: Update GitOps repository
         shell: bash
         env:
           GIT_TOKEN: ${{ secrets.GITOPS_PAT }}
         run: |
-          # Configure git credential store
-          git config --global credential.helper store
-          echo "https://${GIT_TOKEN}:x-oauth-basic@github.com" > ~/.git-credentials
+          # Configure git
+          git config --global user.name "GitHub Actions"
+          git config --global user.email "actions@github.com"
           
           # Remove any existing gitops directory
           rm -rf gitops
           
-          # Clone repository using HTTPS URL without token
-          git clone https://github.com/ouaatyaa/grade-api-gitops.git gitops
+          # Clone repository
+          git clone https://${GIT_TOKEN}@github.com/ouaatyaa/grade-api-gitops.git gitops
           cd gitops
           
-          if [[ "$OSTYPE" == "darwin"* ]]; then
-            sed -i '' "s|image: ghcr.io/${{ github.repository }}:.*|image: ghcr.io/${{ github.repository }}:${{ github.sha }}|g" deployment.yaml
-          else
-            sed -i "s|image: ghcr.io/${{ github.repository }}:.*|image: ghcr.io/${{ github.repository }}:${{ github.sha }}|g" deployment.yaml
-          fi
+          # Update deployment image
+          sed -i "s|image: ghcr.io/${{ github.repository }}:.*|image: ghcr.io/${{ github.repository }}:${{ github.sha }}|g" deployment.yaml
           
-          # Commit changes
-          git config --global user.name "GitHub Actions"
-          git config --global user.email "actions@github.com"
+          # Commit and push changes
           git add deployment.yaml
           git commit -m "Update image to ${{ github.sha }}"
-          
-          # Push
-          git push -f https://${GIT_TOKEN}@github.com/ouaatyaa/grade-api-gitops.git main
+          git push
